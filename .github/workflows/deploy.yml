@@ -1,0 +1,92 @@
+name: Deploy expense-portal to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (Vite → dist/)
+        env:
+          CI: false
+        run: npm run build
+
+      - name: Sanity-check the build
+        run: |
+          test -f dist/index.html || { echo "dist/index.html missing"; exit 1; }
+          test -f dist/.htaccess  || { echo "dist/.htaccess missing (SPA routing!)"; exit 1; }
+          test -d dist/assets     || { echo "dist/assets missing"; exit 1; }
+
+      - name: Setup SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Backup current version on EC2
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+            sudo rm -rf /var/www/html/expense_backup
+            if [ -d /var/www/html/expense ] && [ -f /var/www/html/expense/index.html ]; then
+              sudo cp -a /var/www/html/expense /var/www/html/expense_backup
+              echo "Backup created"
+            else
+              echo "No existing deployment to backup (first deploy)"
+            fi
+          '
+
+      - name: Deploy dist/ to EC2
+        id: deploy
+        run: |
+          sudo_rsync() { rsync -a --delete -e "ssh -i ~/.ssh/deploy_key" --rsync-path="sudo rsync" "$@"; }
+          sudo_rsync dist/ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/var/www/html/expense/
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'sudo chown -R www-data:www-data /var/www/html/expense'
+
+      - name: Verify deployment
+        id: verify
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+            if sudo test -f /var/www/html/expense/index.html && sudo test -d /var/www/html/expense/assets; then
+              echo "Deployment verified"
+            else
+              echo "Deployment FAILED - files missing"; exit 1
+            fi
+          '
+
+      - name: Rollback on failure
+        if: failure() && (steps.deploy.outcome == 'failure' || steps.verify.outcome == 'failure')
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+            if [ -d /var/www/html/expense_backup ]; then
+              sudo rm -rf /var/www/html/expense
+              sudo cp -a /var/www/html/expense_backup /var/www/html/expense
+              sudo chown -R www-data:www-data /var/www/html/expense
+              echo "ROLLED BACK to previous version"
+            else
+              echo "No backup to rollback to"
+            fi
+          '
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
