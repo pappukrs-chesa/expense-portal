@@ -1,0 +1,6 @@
+SERVER_USER="ubuntu"
+SERVER_IP="192.168.50.113"
+SSH_KEY="$HOME/.ssh/chesa-server.pem"
+SERVER_DIR="/var/www/html/expense"
+ALB_IP="13.207.230.182"
+DOMAIN="expense.chesadentalcare.com"

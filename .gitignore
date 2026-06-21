@@ -5,3 +5,4 @@ dist-ssr
 .env.local
 .DS_Store
 npm-debug.log*
+deploy.config.sh
