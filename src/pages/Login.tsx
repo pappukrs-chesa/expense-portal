@@ -116,7 +116,7 @@ export default function Login() {
 
         <div className="relative flex items-center gap-2 text-[12px] text-indigo-100/70">
           <ShieldIcon className="h-4 w-4" />
-          Secure OTP login · only registered concern persons
+          Secure OTP login · only registered concern persons · v1.0
         </div>
       </aside>
 
@@ -218,7 +218,7 @@ export default function Login() {
 
               <div className="mt-6 flex items-center justify-center gap-1.5 text-[12px] text-slate-400 lg:hidden">
                 <ShieldIcon className="h-3.5 w-3.5" />
-                Secure OTP login · only registered concern persons
+                Secure OTP login · only registered concern persons · v1.0
               </div>
             </div>
           </div>
