@@ -18,6 +18,18 @@ const fmtDate = (s: string | null) => {
 const fileSize = (b: number) =>
   b < 1024 ? `${b} B` : b < 1048576 ? `${Math.round(b / 1024)} KB` : `${(b / 1048576).toFixed(1)} MB`
 
+const buildAtLabel = (() => {
+  const iso = typeof __APP_BUILD_AT__ === 'string' ? __APP_BUILD_AT__ : null
+  if (!iso) return null
+  try {
+    return new Date(iso).toLocaleString('en-IN', {
+      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+    })
+  } catch {
+    return null
+  }
+})()
+
 const initials = (s?: string) =>
   (s || '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?'
 
@@ -107,15 +119,29 @@ export default function Expenses() {
   }, [toast])
 
   const [previews, setPreviews] = useState<{ name: string; size: number; isImg: boolean; url: string }[]>([])
+  const [brokenPreviews, setBrokenPreviews] = useState<Set<number>>(new Set())
   useEffect(() => {
-    const next = files.map((f) => ({
-      name: f.name,
-      size: f.size,
-      isImg: f.type.startsWith('image/'),
-      url: f.type.startsWith('image/') ? URL.createObjectURL(f) : '',
-    }))
-    setPreviews(next)
-    return () => next.forEach((p) => p.url && URL.revokeObjectURL(p.url))
+    let cancelled = false
+    setBrokenPreviews(new Set())
+    const readAsDataURL = (f: File) =>
+      new Promise<string>((resolve) => {
+        const r = new FileReader()
+        r.onload = () => resolve(typeof r.result === 'string' ? r.result : '')
+        r.onerror = () => resolve('')
+        r.readAsDataURL(f)
+      })
+    void (async () => {
+      const next = await Promise.all(
+        files.map(async (f) => {
+          const isImg = f.type.startsWith('image/')
+          return { name: f.name, size: f.size, isImg, url: isImg ? await readAsDataURL(f) : '' }
+        }),
+      )
+      if (!cancelled) setPreviews(next)
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [files])
 
   const fetchCategoryOptions = useCallback(async (q: string): Promise<Option[]> => {
@@ -243,7 +269,12 @@ export default function Expenses() {
             </div>
             <div className="leading-tight">
               <div className="text-[15px] font-bold tracking-tight text-slate-900">Expense Portal</div>
-              <div className="text-[12px] text-slate-500">Chesa Dental Care</div>
+              <div className="flex items-center gap-1.5 text-[12px] text-slate-500">
+                Chesa Dental Care
+                {buildAtLabel && (
+                  <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">v {buildAtLabel}</span>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2.5">
@@ -593,29 +624,40 @@ export default function Expenses() {
                     </div>
                   </div>
                   {previews.length > 0 && (
-                    <div className="mt-3 grid grid-cols-3 gap-2.5">
-                      {previews.map((p, i) => (
+                    <>
+                    <div className="mt-3 mb-1.5 text-[12px] font-semibold text-slate-600">Attached ({previews.length})</div>
+                    <div className="grid grid-cols-3 gap-2.5">
+                      {previews.map((p, i) => {
+                        const showImg = p.isImg && p.url && !brokenPreviews.has(i)
+                        return (
                         <div key={i} className="group/file relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                          {p.isImg ? (
-                            <img src={p.url} alt={p.name} className="h-20 w-full object-cover" />
+                          {showImg ? (
+                            <img
+                              src={p.url}
+                              alt={p.name}
+                              className="h-20 w-full object-cover"
+                              onError={() => setBrokenPreviews((s) => new Set(s).add(i))}
+                            />
                           ) : (
                             <div className="flex h-20 flex-col items-center justify-center gap-1 text-slate-400">
                               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M7 3h7l5 5v11a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                              <span className="text-[10px] font-semibold">PDF</span>
+                              <span className="text-[10px] font-semibold">{p.isImg ? 'IMAGE' : 'PDF'}</span>
                             </div>
                           )}
                           <button
                             type="button"
                             onClick={() => removeFile(i)}
-                            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/65 text-white transition hover:bg-rose-600"
+                            className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/70 text-white shadow transition hover:bg-rose-600"
                             aria-label="Remove file"
                           >
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" /></svg>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" /></svg>
                           </button>
                           <div className="truncate bg-white/95 px-1.5 py-1 text-[10px] text-slate-500">{p.name} · {fileSize(p.size)}</div>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
+                    </>
                   )}
                 </div>
               </div>
