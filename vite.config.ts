@@ -3,7 +3,12 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const APP_BUILD_AT = new Date().toISOString()
+
 export default defineConfig({
+  define: {
+    __APP_BUILD_AT__: JSON.stringify(APP_BUILD_AT),
+  },
   plugins: [
     react(),
     tailwindcss(),
