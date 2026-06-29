@@ -106,17 +106,17 @@ export default function Expenses() {
     return () => window.clearTimeout(t)
   }, [toast])
 
-  const previews = useMemo(
-    () =>
-      files.map((f) => ({
-        name: f.name,
-        size: f.size,
-        isImg: f.type.startsWith('image/'),
-        url: f.type.startsWith('image/') ? URL.createObjectURL(f) : '',
-      })),
-    [files],
-  )
-  useEffect(() => () => previews.forEach((p) => p.url && URL.revokeObjectURL(p.url)), [previews])
+  const [previews, setPreviews] = useState<{ name: string; size: number; isImg: boolean; url: string }[]>([])
+  useEffect(() => {
+    const next = files.map((f) => ({
+      name: f.name,
+      size: f.size,
+      isImg: f.type.startsWith('image/'),
+      url: f.type.startsWith('image/') ? URL.createObjectURL(f) : '',
+    }))
+    setPreviews(next)
+    return () => next.forEach((p) => p.url && URL.revokeObjectURL(p.url))
+  }, [files])
 
   const fetchCategoryOptions = useCallback(async (q: string): Promise<Option[]> => {
     const { data } = await api.get(endpoints.categories, { params: q ? { search: q } : {} })
@@ -560,7 +560,11 @@ export default function Expenses() {
                     onDragLeave={(e) => { e.preventDefault(); setDragOver(false) }}
                     onDrop={(e) => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files) }}
                     className={`rounded-2xl border-2 border-dashed px-4 py-5 text-center transition ${
-                      dragOver ? 'border-indigo-400 bg-indigo-50' : 'border-slate-300 bg-slate-50/70'
+                      dragOver
+                        ? 'border-indigo-400 bg-indigo-50'
+                        : files.length
+                          ? 'border-emerald-300 bg-emerald-50/50'
+                          : 'border-slate-300 bg-slate-50/70'
                     }`}
                   >
                     <input
@@ -580,6 +584,12 @@ export default function Expenses() {
                         <span className="text-slate-400"> or drag &amp; drop</span>
                       </div>
                       <div className="text-[11px] text-slate-400">Images or PDF · up to 5 files</div>
+                      {files.length > 0 && (
+                        <div className="mt-0.5 flex items-center gap-1.5 text-[12px] font-semibold text-emerald-600">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                          {files.length} file{files.length > 1 ? 's' : ''} attached · tap to add more
+                        </div>
+                      )}
                     </div>
                   </div>
                   {previews.length > 0 && (
